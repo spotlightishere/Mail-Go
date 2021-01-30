@@ -52,6 +52,7 @@ func ModifyNwcConfig(originalConfig []byte, db *sql.DB, global Config, ravenClie
 		LogError(ravenClient, "Error preparing account statement", err)
 		return nil, err
 	}
+	defer stmt.Close()
 
 	_, err = stmt.Exec(mlid, mlchkidHash, passwdHash)
 	if err != nil {

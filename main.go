@@ -22,6 +22,8 @@ var db *sql.DB
 var salt []byte
 var ravenClient *raven.Client
 var dataDogClient *statsd.Client
+var sendAuthRegex = regexp.MustCompile(`^mlid=(w\d{16})\r\npasswd=(.{16,32})$`)
+
 
 func logRequest(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -42,19 +44,42 @@ func logRequest(handler http.Handler) http.Handler {
 }
 
 func checkHandler(w http.ResponseWriter, r *http.Request) {
-	Check(w, r, db, global.Interval)
+	//Check(w, r)
 }
 
 func receiveHandler(w http.ResponseWriter, r *http.Request) {
-	Receive(w, r, db)
+	//Receive(w, r)
 }
 
 func deleteHandler(w http.ResponseWriter, r *http.Request) {
-	Delete(w, r, db)
+	//Delete(w, r)
 }
 
 func sendHandler(w http.ResponseWriter, r *http.Request) {
-	Send(w, r, db, global)
+	// Parse form in preparation.
+	err := r.ParseMultipartForm(-1)	
+	if err != nil {
+		fmt.Fprint(w, GenNormalErrorCode(350, "Failed to parse mail."))
+		return
+	}
+
+	// We expect a form part named "mlid" from every request.
+	mlidData := r.FormValue("mlid")
+	if mlidData == "" {
+		fmt.Fprintf(w, GenNormalErrorCode(250, "An authentication error occurred."))
+		return
+	}
+
+	sendFormat := sendAuthRegex.FindStringSubmatch(mlidData)
+	if sendFormat == nil {
+		fmt.Fprintf(w, GenNormalErrorCode(250, "An authentication error occurred."))
+		return
+	}
+
+	mlid = sendFormat[1]
+	passwd = sendFormat[2]
+
+	Send(w, r, mild)
 }
 
 func configHandle(w http.ResponseWriter, r *http.Request) {
@@ -88,11 +113,14 @@ func configHandle(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "application/octet-stream")
 		w.Header().Add("Content-Disposition", "attachment; filename=\"nwc24msg.cfg\"")
 		w.Write(patched)
-		break
-	case "GET":
-		fmt.Fprint(w, "This page doesn't do anything by itself. Try going to the main site.")
 	default:
-		break
+		fmt.Fprint(w, "This page doesn't do anything by itself. Try going to the main site.")
+	}
+}
+
+func panicIfErr(err error) {
+	if err != nil {
+		panic(err)
 	}
 }
 
@@ -105,54 +133,35 @@ func main() {
 		salt = make([]byte, 128)
 
 		_, err := rand.Read(salt)
-		if err != nil {
-			panic(err)
-		}
-
-		err = ioutil.WriteFile("config/salt.bin", salt, os.ModePerm)
-		if err != nil {
-			panic(err)
-		}
-	} else if err != nil {
-		panic(err)
+		panicIfErr(err)
+		panicIfErr(ioutil.WriteFile("config/salt.bin", salt, os.ModePerm))
 	}
+	panicIfErr(err)
 
 	// Read config
 	file, err := os.Open("config/config.json")
-	if err != nil {
-		panic(err)
-	}
+	panicIfErr(err)
+
 	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&global)
-	if err != nil {
-		panic(err)
-	}
+	panicIfErr(decoder.Decode(&global))
 
 	if global.Debug {
 		log.Println("Connecting to MySQL...")
 	}
 	db, err = sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%d)/%s",
 		global.Username, global.Password, global.Host, global.Port, global.DBName))
-	if err != nil {
-		panic(err)
-	}
+	panicIfErr(err)
 	err = db.Ping()
-	if err != nil {
-		panic(err)
-	}
+	panicIfErr(err)
 
 	if global.RavenDSN != "" {
 		ravenClient, err = raven.New(global.RavenDSN)
-		if err != nil {
-			panic(err)
-		}
+		panicIfErr(err)
 	}
 
 	if global.Datadog {
 		dataDogClient, err = statsd.New("127.0.0.1:8125")
-		if err != nil {
-			panic(err)
-		}
+		panicIfErr(err)
 	}
 
 	// Mail calls

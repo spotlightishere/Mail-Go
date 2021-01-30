@@ -1,44 +1,17 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // Receive loops through stored mail and formulates a response.
 // Then, if applicable, marks the mail as received.
-func Receive(w http.ResponseWriter, r *http.Request, db *sql.DB) {
-	// Parse form.
-	err := r.ParseForm()
-	if err != nil {
-		fmt.Fprint(w, GenNormalErrorCode(330, "Unable to parse parameters."))
-		LogError("Unable to parse form", err)
-		return
-	}
-
-	isVerified, mlidWithW, err := Auth(r.Form)
-	if err != nil {
-		fmt.Fprintf(w, GenNormalErrorCode(531, "Something weird happened."))
-		LogError("Error receiving.", err)
-		return
-	} else if !isVerified {
-		fmt.Fprintf(w, GenNormalErrorCode(230, "An authentication error occurred."))
-		return
-	}
-
-	// We already know the mlid is valid as Auth checks it for us,
+func Receive(w http.ResponseWriter, r *http.Request, mlidWithW string) {
+	// We already know the mlid is valid as we're authenticated,
 	// so we don't need to further check.
-
-	if mlidWithW == "" {
-		fmt.Fprintf(w, GenNormalErrorCode(330, "Unable to parse parameters."))
-		return
-	}
-
 	mlid := mlidWithW[1:]
 
 	maxsize, err := strconv.Atoi(r.Form.Get("maxsize"))
@@ -141,9 +114,4 @@ func Receive(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 		totalMailOutput,
 		"\r\n--", wc24MimeBoundary, "--\r\n")
 	fmt.Fprint(w, request)
-}
-
-func random(min, max int) int {
-	rand.Seed(time.Now().Unix())
-	return rand.Intn(max-min) + min
 }

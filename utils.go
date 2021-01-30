@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha512"
+	"encoding/hex"
 	"fmt"
 	"github.com/RiiConnect24/wiino/golang"
 	"github.com/getsentry/raven-go"
@@ -58,12 +60,23 @@ func GenMailErrorCode(mailNumber string, error int, reason string) string {
 
 // GenNormalErrorCode formulates a proper response for overall errors.
 func GenNormalErrorCode(error int, reason string) string {
+	// By default, we want to log all errors if debug is enabled.
+	shouldLog := global.Debug
+
 	switch error {
-	case 220:
+	// Authentication related errors should not be logged in production.
+	case 230:
+	case 240:
+	case 250:
 		break
 	default:
+		shouldLog = true
+	}
+
+	if shouldLog {
 		log.Println(aurora.Red("[Warning]"), "Encountered error", error, "with reason", reason)
 	}
+
 	return fmt.Sprint(
 		"cd=", strconv.Itoa(error), "\n",
 		"msg=", reason, "\n")
@@ -105,14 +118,25 @@ func friendCodeIsValid(friendCode string) bool {
 	return wiino.NWC24CheckUserID(uint64(wiiId)) == 0
 }
 
+// saltHash takes a source string, appends the configured salt to it,
+// and then hashes it for easy comparison elsewhere.
+func saltHash(src string) string {
+	hashByte := sha512.Sum512(append(salt, []byte(src)...))
+	return hex.EncodeToString(hashByte[:])
+}
+
+func random(min, max int) int {
+	rand.Seed(time.Now().Unix())
+	return rand.Intn(max-min) + min
+}
+
 // GenerateBoundary returns a string with the format Nintendo used for boundaries.
 func GenerateBoundary() string {
 	return fmt.Sprint(time.Now().Format("200601021504"), "/", random(1000000, 9999999))
 }
 
 func LogError(reason string, err error) {
-	// Adapted from
-	// https://stackoverflow.com/a/38551362
+	// Adapted from https://stackoverflow.com/a/38551362
 	pc, _, _, ok := runtime.Caller(1)
 	details := runtime.FuncForPC(pc)
 	if ok && details != nil {

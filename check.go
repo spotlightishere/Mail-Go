@@ -4,7 +4,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/sha512"
-	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -13,18 +12,17 @@ import (
 
 // Check handles adding the proper interval for check.cgi along with future
 // challenge solving and future mail existence checking.
-func Check(w http.ResponseWriter, r *http.Request, db *sql.DB, inter int) {
-	// Used later on for challenge solving.
-	var res string
-
+func Check(w http.ResponseWriter, r *http.Request) {
 	mlchkidStmt, err := db.Prepare("SELECT `mlid` FROM accounts WHERE `mlchkid` = ?")
 	if err != nil {
 		fmt.Fprintf(w, GenNormalErrorCode(420, "Unable to formulate authentication statement."))
 		LogError("Unable to prepare check statement", err)
 		return
 	}
+
 	// Grab string of interval
-	interval := strconv.Itoa(inter)
+	interval := strconv.Itoa(global.Interval)
+
 	// Add required headers
 	w.Header().Add("Content-Type", "text/plain;charset=utf-8")
 	w.Header().Add("X-Wii-Mail-Download-Span", interval)
@@ -129,7 +127,7 @@ func Check(w http.ResponseWriter, r *http.Request, db *sql.DB, inter int) {
 	h.Write([]byte(mailFlag))
 	h.Write([]byte("\n"))
 	h.Write([]byte(interval))
-	res = hex.EncodeToString(h.Sum(nil))
+	res := hex.EncodeToString(h.Sum(nil))
 
 	err = result.Err()
 	if err != nil {

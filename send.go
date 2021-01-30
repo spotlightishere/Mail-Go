@@ -18,7 +18,7 @@ var mailFrom2 = regexp.MustCompile(`^From:\s(.*)@(?:.*)$`)
 var rcptFrom = regexp.MustCompile(`^RCPT TO:\s(.*)@(.*)$`)
 
 // Send takes POSTed mail by the Wii and stores it in the database for future usage.
-func Send(w http.ResponseWriter, r *http.Request, db *sql.DB, config patch.Config) {
+func Send(w http.ResponseWriter, r *http.Request, authedWiiId string) {
 	w.Header().Add("Content-Type", "text/plain;charset=utf-8")
 	// Go ahead and prepare the insert statement, for later usage.
 	stmt, err := db.Prepare("INSERT INTO `mails` (`sender_wiiID`,`mail`, `recipient_id`, `mail_id`, `message_id`) VALUES (?, ?, ?, ?, ?)")
@@ -31,25 +31,6 @@ func Send(w http.ResponseWriter, r *http.Request, db *sql.DB, config patch.Confi
 
 	// Create maps for storage of mail.
 	mailPart := make(map[string]string)
-
-	// Parse form in preparation for finding mail.
-	err = r.ParseMultipartForm(-1)
-	if err != nil {
-		fmt.Fprint(w, GenNormalErrorCode(350, "Failed to parse mail."))
-		LogError("Failed to parse mail", err)
-		return
-	}
-
-	// Now check if it can be verified
-	isVerified, authedWiiId, err := Auth(r.Form)
-	if err != nil {
-		fmt.Fprintf(w, GenNormalErrorCode(551, "Something weird happened."))
-		LogError("Error changing from authentication database.", err)
-		return
-	} else if !isVerified {
-		fmt.Fprintf(w, GenNormalErrorCode(250, "An authentication error occurred."))
-		return
-	}
 
 	for name, contents := range r.MultipartForm.Value {
 		if mailFormName.MatchString(name) {
@@ -128,7 +109,7 @@ func Send(w http.ResponseWriter, r *http.Request, db *sql.DB, config patch.Confi
 				// potentialRecipient[2] = domain being sent to
 				if potentialRecipient[2] == "wii.com" {
 					// We're not gonna allow you to send to a defunct domain. ;P
-				} else if potentialRecipient[2] == config.SendGridDomain {
+				} else if potentialRecipient[2] == global.SendGridDomain {
 					// Wii <-> Wii mail. We can handle this.
 					wiiRecipientIDs = append(wiiRecipientIDs, potentialRecipient[1])
 				} else {
@@ -191,7 +172,7 @@ func Send(w http.ResponseWriter, r *http.Request, db *sql.DB, config patch.Confi
 				continue
 			}
 
-			err := handlePCmail(config, senderID, pcRecipient, mailContents)
+			err := handlePCmail(global, senderID, pcRecipient, mailContents)
 			if err != nil {
 				LogError("Error sending mail via SendGrid", err)
 				eventualOutput += GenMailErrorCode(mailNumber, 551, "Issue sending mail via SendGrid.")
